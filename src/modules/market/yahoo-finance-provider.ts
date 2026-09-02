@@ -1,0 +1,91 @@
+import type {
+  HistoricalQuote,
+  MarketDataProvider,
+} from './market-data-provider.js';
+
+interface YahooChartResponse {
+  chart?: {
+    result?: Array<{
+      timestamp?: number[];
+      indicators?: {
+        quote?: Array<{
+          close?: Array<number | null>;
+        }>;
+      };
+    }> | null;
+  };
+}
+
+export class MarketDataProviderError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'MarketDataProviderError';
+  }
+}
+
+export class MarketDataNotFoundProviderError extends Error {
+  constructor(symbol: string) {
+    super(`No market data was found for symbol ${symbol}.`);
+    this.name = 'MarketDataNotFoundProviderError';
+  }
+}
+
+export class YahooFinanceProvider implements MarketDataProvider {
+  async getHistoricalQuotes(
+    symbol: string,
+    startDate: Date,
+    endDate: Date,
+  ): Promise<HistoricalQuote[]> {
+    const yahooSymbol = `${symbol}.SA`;
+    const url = new URL(
+      `https://query1.finance.yahoo.com/v8/finance/chart/${yahooSymbol}`,
+    );
+
+    url.searchParams.set('period1', String(Math.floor(startDate.getTime() / 1000)));
+    url.searchParams.set('period2', String(Math.floor(endDate.getTime() / 1000)));
+    url.searchParams.set('interval', '1d');
+    url.searchParams.set('events', 'history');
+
+    let response: Response;
+
+    try {
+      response = await fetch(url, { signal: AbortSignal.timeout(10_000) });
+    } catch {
+      throw new MarketDataProviderError('Unable to reach the market data provider.');
+    }
+
+    if (response.status === 404) {
+      throw new MarketDataNotFoundProviderError(symbol);
+    }
+
+    if (!response.ok) {
+      throw new MarketDataProviderError('The market data provider returned an error.');
+    }
+
+    let body: YahooChartResponse;
+
+    try {
+      body = (await response.json()) as YahooChartResponse;
+    } catch {
+      throw new MarketDataProviderError('The market data provider returned invalid data.');
+    }
+
+    const chart = body.chart?.result?.[0];
+    const timestamps = chart?.timestamp;
+    const closes = chart?.indicators?.quote?.[0]?.close;
+
+    if (!timestamps || !closes || timestamps.length !== closes.length) {
+      throw new MarketDataProviderError('The market data provider returned invalid data.');
+    }
+
+    return timestamps.flatMap((timestamp, index) => {
+      const close = closes[index];
+
+      if (typeof close !== 'number' || !Number.isFinite(close)) {
+        return [];
+      }
+
+      return [{ date: new Date(timestamp * 1000).toISOString().slice(0, 10), close }];
+    });
+  }
+}
