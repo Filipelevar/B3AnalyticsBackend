@@ -70,11 +70,21 @@ Resposta:
 			"PETR4": 32.21,
 			"VALE3": 53.75
 		}
-	]
+	],
+	"meta": {
+		"PETR4": {
+			"name": "Petróleo Brasileiro S.A. - Petrobras",
+			"currency": "BRL"
+		},
+		"VALE3": {
+			"name": "Vale S.A.",
+			"currency": "BRL"
+		}
+	}
 }
 ```
 
-Cada item representa um ponto de negociação. Para consultas com `range=1D`, a API retorna pontos intradiários em intervalos de 5 minutos (`YYYY-MM-DD HH:mm`), permitindo polling e gráficos em tempo real. Para os demais períodos (`5D`, `1M`, `3M`, `6M`, `1Y` ou datas personalizadas), a API retorna o preço de fechamento diário (`YYYY-MM-DD`). Quando vários ativos são enviados, seus preços aparecem alinhados no mesmo item de `data`, permitindo que o frontend construa um único gráfico com várias linhas.
+Cada item de `data` representa um ponto de negociação. A propriedade opcional `meta` retorna metadados do ativo, como o nome completo da empresa (`name`) e a moeda (`currency`). Para consultas com `range=1D`, a API retorna pontos intradiários em intervalos de 5 minutos (`YYYY-MM-DD HH:mm`), permitindo polling e gráficos em tempo real. Para os demais períodos (`5D`, `1M`, `3M`, `6M`, `1Y` ou datas personalizadas), a API retorna o preço de fechamento diário (`YYYY-MM-DD`). Quando vários ativos são enviados, seus preços aparecem alinhados no mesmo item de `data`, permitindo que o frontend construa um único gráfico com várias linhas.
 
 Validações aplicadas pelo backend:
 

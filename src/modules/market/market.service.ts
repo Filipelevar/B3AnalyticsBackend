@@ -30,6 +30,7 @@ export interface AssetHistoryQuery {
 
 export interface AssetHistoryResponse {
   data: Array<Record<string, string | number>>;
+  meta?: Record<string, { name?: string; currency?: string }>;
 }
 
 export class MarketService {
@@ -55,16 +56,40 @@ export class MarketService {
     const exclusiveEndDate = new Date(endDate);
     exclusiveEndDate.setUTCDate(exclusiveEndDate.getUTCDate() + 1);
 
-    const histories = await Promise.all(symbols.map(async (symbol) => ({
-      symbol,
-      quotes: isOneDayRange
+    const histories = await Promise.all(symbols.map(async (symbol) => {
+      let result = isOneDayRange
         ? await this.provider.getHistoricalQuotes(symbol, startDate, exclusiveEndDate, '5m')
-        : await this.getQuotes(symbol, startDate, exclusiveEndDate),
-    })));
+        : await this.getQuotes(symbol, startDate, exclusiveEndDate);
+
+      if (isOneDayRange && result.meta) {
+        await this.repository.saveSymbolMeta(result.meta).catch(() => {});
+      }
+
+      if (!result.meta?.name) {
+        const cachedMeta = await this.repository.findSymbolMeta(symbol).catch(() => null);
+        if (cachedMeta) {
+          result = { ...result, meta: { ...cachedMeta, ...result.meta } };
+        }
+      }
+
+      return {
+        symbol,
+        quotes: result.quotes,
+        meta: result.meta,
+      };
+    }));
 
     const rows = new Map<string, Record<string, string | number>>();
+    const metaMap: Record<string, { name?: string; currency?: string }> = {};
 
-    for (const { symbol, quotes } of histories) {
+    for (const { symbol, quotes, meta } of histories) {
+      if (meta && (meta.name || meta.currency)) {
+        metaMap[symbol] = {
+          ...(meta.name ? { name: meta.name } : {}),
+          ...(meta.currency ? { currency: meta.currency } : {}),
+        };
+      }
+
       for (const quote of quotes) {
         const row = rows.get(quote.date) ?? { date: quote.date };
         row[symbol] = quote.close;
@@ -80,7 +105,10 @@ export class MarketService {
       throw new HistoricalDataNotFoundError();
     }
 
-    return { data };
+    return {
+      data,
+      ...(Object.keys(metaMap).length > 0 ? { meta: metaMap } : {}),
+    };
   }
 
   private async getQuotes(
@@ -91,13 +119,15 @@ export class MarketService {
     const hasCoverage = await this.repository.hasCoverage(symbol, startDate, endDate);
 
     if (hasCoverage) {
-      return this.repository.findHistoricalQuotes(symbol, startDate, endDate);
+      const quotes = await this.repository.findHistoricalQuotes(symbol, startDate, endDate);
+      const meta = (await this.repository.findSymbolMeta(symbol)) ?? undefined;
+      return { quotes, meta };
     }
 
-    const quotes = await this.provider.getHistoricalQuotes(symbol, startDate, endDate);
-    await this.repository.saveHistoricalQuotes(symbol, startDate, endDate, quotes);
+    const result = await this.provider.getHistoricalQuotes(symbol, startDate, endDate);
+    await this.repository.saveHistoricalQuotes(symbol, startDate, endDate, result.quotes, result.meta);
 
-    return quotes;
+    return result;
   }
 
   private resolvePeriod(query: AssetHistoryQuery): { startDate: Date; endDate: Date } {

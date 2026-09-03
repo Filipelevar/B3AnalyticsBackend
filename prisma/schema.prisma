@@ -39,3 +39,11 @@ model MarketDataCoverage {
   @@unique([symbol, startDate, endDate])
   @@index([symbol, startDate, endDate])
 }
+
+model SymbolInfo {
+  symbol    String   @id
+  name      String?
+  currency  String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}

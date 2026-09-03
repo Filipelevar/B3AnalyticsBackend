@@ -1,5 +1,5 @@
 import { prisma } from '../../config/prisma.js';
-import type { HistoricalQuote } from './market-data-provider.js';
+import type { HistoricalQuote, SymbolMeta } from './market-data-provider.js';
 
 export class MarketDataRepository {
   async hasCoverage(symbol: string, startDate: Date, endDate: Date): Promise<boolean> {
@@ -34,11 +34,43 @@ export class MarketDataRepository {
     }));
   }
 
+  async findSymbolMeta(symbol: string): Promise<SymbolMeta | null> {
+    const info = await prisma.symbolInfo.findUnique({
+      where: { symbol },
+    });
+
+    if (!info) {
+      return null;
+    }
+
+    return {
+      symbol: info.symbol,
+      ...(info.name ? { name: info.name } : {}),
+      ...(info.currency ? { currency: info.currency } : {}),
+    };
+  }
+
+  async saveSymbolMeta(meta: SymbolMeta): Promise<void> {
+    await prisma.symbolInfo.upsert({
+      where: { symbol: meta.symbol },
+      create: {
+        symbol: meta.symbol,
+        name: meta.name,
+        currency: meta.currency,
+      },
+      update: {
+        ...(meta.name ? { name: meta.name } : {}),
+        ...(meta.currency ? { currency: meta.currency } : {}),
+      },
+    });
+  }
+
   async saveHistoricalQuotes(
     symbol: string,
     startDate: Date,
     endDate: Date,
     quotes: HistoricalQuote[],
+    meta?: SymbolMeta,
   ): Promise<void> {
     await prisma.$transaction([
       ...quotes.map((quote) =>
@@ -46,12 +78,12 @@ export class MarketDataRepository {
           where: {
             symbol_date: {
               symbol,
-              date: new Date(`${quote.date}T00:00:00.000Z`),
+              date: new Date(`${quote.date.slice(0, 10)}T00:00:00.000Z`),
             },
           },
           create: {
             symbol,
-            date: new Date(`${quote.date}T00:00:00.000Z`),
+            date: new Date(`${quote.date.slice(0, 10)}T00:00:00.000Z`),
             close: quote.close,
           },
           update: { close: quote.close },
@@ -64,6 +96,22 @@ export class MarketDataRepository {
         create: { symbol, startDate, endDate },
         update: {},
       }),
+      ...(meta
+        ? [
+            prisma.symbolInfo.upsert({
+              where: { symbol },
+              create: {
+                symbol,
+                name: meta.name,
+                currency: meta.currency,
+              },
+              update: {
+                ...(meta.name ? { name: meta.name } : {}),
+                ...(meta.currency ? { currency: meta.currency } : {}),
+              },
+            }),
+          ]
+        : []),
     ]);
   }
 }

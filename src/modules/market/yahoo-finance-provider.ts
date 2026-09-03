@@ -1,11 +1,19 @@
 import type {
   HistoricalQuote,
+  HistoricalQuoteResult,
   MarketDataProvider,
+  SymbolMeta,
 } from './market-data-provider.js';
 
 interface YahooChartResponse {
   chart?: {
     result?: Array<{
+      meta?: {
+        symbol?: string;
+        shortName?: string;
+        longName?: string;
+        currency?: string;
+      };
       timestamp?: number[];
       indicators?: {
         quote?: Array<{
@@ -36,7 +44,7 @@ export class YahooFinanceProvider implements MarketDataProvider {
     startDate: Date,
     endDate: Date,
     interval = '1d',
-  ): Promise<HistoricalQuote[]> {
+  ): Promise<HistoricalQuoteResult> {
     const yahooSymbol = `${symbol}.SA`;
     const url = new URL(
       `https://query1.finance.yahoo.com/v8/finance/chart/${yahooSymbol}`,
@@ -86,7 +94,16 @@ export class YahooFinanceProvider implements MarketDataProvider {
       throw new MarketDataProviderError('The market data provider returned invalid data.');
     }
 
-    return timestamps.flatMap((timestamp, index) => {
+    const name = chart.meta?.longName || chart.meta?.shortName;
+    const currency = chart.meta?.currency;
+
+    const meta: SymbolMeta = {
+      symbol,
+      ...(name ? { name } : {}),
+      ...(currency ? { currency } : {}),
+    };
+
+    const quotes = timestamps.flatMap((timestamp, index) => {
       const close = closes[index];
 
       if (typeof close !== 'number' || !Number.isFinite(close)) {
@@ -99,5 +116,7 @@ export class YahooFinanceProvider implements MarketDataProvider {
 
       return [{ date: formattedDate, close }];
     });
+
+    return { quotes, meta };
   }
 }
