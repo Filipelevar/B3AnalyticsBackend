@@ -35,16 +35,24 @@ export class YahooFinanceProvider implements MarketDataProvider {
     symbol: string,
     startDate: Date,
     endDate: Date,
+    interval = '1d',
   ): Promise<HistoricalQuote[]> {
     const yahooSymbol = `${symbol}.SA`;
     const url = new URL(
       `https://query1.finance.yahoo.com/v8/finance/chart/${yahooSymbol}`,
     );
 
-    url.searchParams.set('period1', String(Math.floor(startDate.getTime() / 1000)));
-    url.searchParams.set('period2', String(Math.floor(endDate.getTime() / 1000)));
-    url.searchParams.set('interval', '1d');
-    url.searchParams.set('events', 'history');
+    const isIntraday = interval !== '1d';
+
+    if (isIntraday) {
+      url.searchParams.set('range', '1d');
+      url.searchParams.set('interval', interval);
+    } else {
+      url.searchParams.set('period1', String(Math.floor(startDate.getTime() / 1000)));
+      url.searchParams.set('period2', String(Math.floor(endDate.getTime() / 1000)));
+      url.searchParams.set('interval', '1d');
+      url.searchParams.set('events', 'history');
+    }
 
     let response: Response;
 
@@ -85,7 +93,11 @@ export class YahooFinanceProvider implements MarketDataProvider {
         return [];
       }
 
-      return [{ date: new Date(timestamp * 1000).toISOString().slice(0, 10), close }];
+      const formattedDate = isIntraday
+        ? new Date(timestamp * 1000).toISOString().slice(0, 16).replace('T', ' ')
+        : new Date(timestamp * 1000).toISOString().slice(0, 10);
+
+      return [{ date: formattedDate, close }];
     });
   }
 }

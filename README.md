@@ -74,7 +74,7 @@ Resposta:
 }
 ```
 
-Cada item representa um dia de negociação. Quando vários ativos são enviados, seus preços aparecem no mesmo item de `data`, permitindo que o frontend construa um único gráfico com várias linhas.
+Cada item representa um ponto de negociação. Para consultas com `range=1D`, a API retorna pontos intradiários em intervalos de 5 minutos (`YYYY-MM-DD HH:mm`), permitindo polling e gráficos em tempo real. Para os demais períodos (`5D`, `1M`, `3M`, `6M`, `1Y` ou datas personalizadas), a API retorna o preço de fechamento diário (`YYYY-MM-DD`). Quando vários ativos são enviados, seus preços aparecem alinhados no mesmo item de `data`, permitindo que o frontend construa um único gráfico com várias linhas.
 
 Validações aplicadas pelo backend:
 
@@ -93,7 +93,7 @@ Principais respostas:
 - `404 Not Found`: ativo inexistente ou período sem dados.
 - `502 Bad Gateway`: erro no provider externo de cotações.
 
-Quando `range=1D` não possui cotação para a data atual, por exemplo em um fim de semana ou feriado, a API retorna o último pregão disponível dos sete dias anteriores.
+Para consultas com `range=1D` fora do horário de pregão (como fins de semana ou feriados), a API retorna a série intradiária do último pregão encerrado.
 
 ### `POST /auth/register`
 

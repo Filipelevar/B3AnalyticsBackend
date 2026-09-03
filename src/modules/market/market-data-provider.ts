@@ -8,5 +8,6 @@ export interface MarketDataProvider {
     symbol: string,
     startDate: Date,
     endDate: Date,
+    interval?: string,
   ): Promise<HistoricalQuote[]>;
 }

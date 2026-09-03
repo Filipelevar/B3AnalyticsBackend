@@ -57,7 +57,9 @@ export class MarketService {
 
     const histories = await Promise.all(symbols.map(async (symbol) => ({
       symbol,
-      quotes: await this.getQuotes(symbol, startDate, exclusiveEndDate, isOneDayRange),
+      quotes: isOneDayRange
+        ? await this.provider.getHistoricalQuotes(symbol, startDate, exclusiveEndDate, '5m')
+        : await this.getQuotes(symbol, startDate, exclusiveEndDate),
     })));
 
     const rows = new Map<string, Record<string, string | number>>();
@@ -85,53 +87,17 @@ export class MarketService {
     symbol: string,
     startDate: Date,
     endDate: Date,
-    useLatestTradingDayFallback: boolean,
   ) {
     const hasCoverage = await this.repository.hasCoverage(symbol, startDate, endDate);
 
     if (hasCoverage) {
-      const cachedQuotes = await this.repository.findHistoricalQuotes(symbol, startDate, endDate);
-      if (cachedQuotes.length > 0 || !useLatestTradingDayFallback) {
-        return cachedQuotes;
-      }
-
-      return this.getLatestTradingDay(symbol, startDate);
+      return this.repository.findHistoricalQuotes(symbol, startDate, endDate);
     }
 
     const quotes = await this.provider.getHistoricalQuotes(symbol, startDate, endDate);
     await this.repository.saveHistoricalQuotes(symbol, startDate, endDate, quotes);
 
-    if (quotes.length > 0 || !useLatestTradingDayFallback) {
-      return quotes;
-    }
-
-    return this.getLatestTradingDay(symbol, startDate);
-  }
-
-  private async getLatestTradingDay(symbol: string, endDate: Date) {
-    const fallbackStartDate = new Date(endDate);
-    fallbackStartDate.setUTCDate(fallbackStartDate.getUTCDate() - 7);
-
-    const fallbackEndDate = new Date(endDate);
-    const fallbackHasCoverage = await this.repository.hasCoverage(
-      symbol,
-      fallbackStartDate,
-      fallbackEndDate,
-    );
-    const fallbackQuotes = fallbackHasCoverage
-      ? await this.repository.findHistoricalQuotes(symbol, fallbackStartDate, fallbackEndDate)
-      : await this.provider.getHistoricalQuotes(symbol, fallbackStartDate, fallbackEndDate);
-
-    if (!fallbackHasCoverage) {
-      await this.repository.saveHistoricalQuotes(
-        symbol,
-        fallbackStartDate,
-        fallbackEndDate,
-        fallbackQuotes,
-      );
-    }
-
-    return fallbackQuotes.length > 0 ? [fallbackQuotes[fallbackQuotes.length - 1]] : [];
+    return quotes;
   }
 
   private resolvePeriod(query: AssetHistoryQuery): { startDate: Date; endDate: Date } {
