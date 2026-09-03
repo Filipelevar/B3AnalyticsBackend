@@ -16,6 +16,7 @@ interface AssetHistoryQuerystring {
   symbols?: string;
   startDate?: string;
   endDate?: string;
+  range?: string;
 }
 
 const marketService = new MarketService(
@@ -25,17 +26,17 @@ const marketService = new MarketService(
 
 export async function registerMarketRoutes(server: FastifyInstance): Promise<void> {
   server.get<{ Querystring: AssetHistoryQuerystring }>('/assets/history', async (request, reply) => {
-    const { symbols, startDate, endDate } = request.query;
+    const { symbols, startDate, endDate, range } = request.query;
 
-    if (!symbols || !startDate || !endDate) {
+    if (!symbols) {
       return reply.status(400).send({
         error: 'Bad Request',
-        message: 'symbols, startDate and endDate are required.',
+        message: 'symbols is required.',
       });
     }
 
     try {
-      return await marketService.getAssetHistory({ symbols, startDate, endDate });
+      return await marketService.getAssetHistory({ symbols, startDate, endDate, range });
     } catch (error) {
       if (error instanceof InvalidMarketQueryError) {
         return reply.status(400).send({ error: 'Bad Request', message: error.message });

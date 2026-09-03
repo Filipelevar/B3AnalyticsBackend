@@ -5,6 +5,7 @@ const MAX_SYMBOLS = 10;
 const MAX_RANGE_IN_DAYS = 365 * 5;
 const DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
 const SYMBOL_PATTERN = /^[A-Z0-9]{4,8}$/;
+const PERIOD_PATTERN = /^(1D|5D|1M|3M|6M|1Y)$/;
 
 export class InvalidMarketQueryError extends Error {
   constructor(message: string) {
@@ -22,8 +23,9 @@ export class HistoricalDataNotFoundError extends Error {
 
 export interface AssetHistoryQuery {
   symbols: string;
-  startDate: string;
-  endDate: string;
+  startDate?: string;
+  endDate?: string;
+  range?: string;
 }
 
 export interface AssetHistoryResponse {
@@ -38,8 +40,8 @@ export class MarketService {
 
   async getAssetHistory(query: AssetHistoryQuery): Promise<AssetHistoryResponse> {
     const symbols = this.parseSymbols(query.symbols);
-    const startDate = this.parseDate(query.startDate, 'startDate');
-    const endDate = this.parseDate(query.endDate, 'endDate');
+    const { startDate, endDate } = this.resolvePeriod(query);
+    const isOneDayRange = !query.range || query.range === '1D';
 
     if (startDate > endDate) {
       throw new InvalidMarketQueryError('startDate must be earlier than or equal to endDate.');
@@ -55,7 +57,7 @@ export class MarketService {
 
     const histories = await Promise.all(symbols.map(async (symbol) => ({
       symbol,
-      quotes: await this.getQuotes(symbol, startDate, exclusiveEndDate),
+      quotes: await this.getQuotes(symbol, startDate, exclusiveEndDate, isOneDayRange),
     })));
 
     const rows = new Map<string, Record<string, string | number>>();
@@ -79,17 +81,122 @@ export class MarketService {
     return { data };
   }
 
-  private async getQuotes(symbol: string, startDate: Date, endDate: Date) {
+  private async getQuotes(
+    symbol: string,
+    startDate: Date,
+    endDate: Date,
+    useLatestTradingDayFallback: boolean,
+  ) {
     const hasCoverage = await this.repository.hasCoverage(symbol, startDate, endDate);
 
     if (hasCoverage) {
-      return this.repository.findHistoricalQuotes(symbol, startDate, endDate);
+      const cachedQuotes = await this.repository.findHistoricalQuotes(symbol, startDate, endDate);
+      if (cachedQuotes.length > 0 || !useLatestTradingDayFallback) {
+        return cachedQuotes;
+      }
+
+      return this.getLatestTradingDay(symbol, startDate);
     }
 
     const quotes = await this.provider.getHistoricalQuotes(symbol, startDate, endDate);
     await this.repository.saveHistoricalQuotes(symbol, startDate, endDate, quotes);
 
-    return quotes;
+    if (quotes.length > 0 || !useLatestTradingDayFallback) {
+      return quotes;
+    }
+
+    return this.getLatestTradingDay(symbol, startDate);
+  }
+
+  private async getLatestTradingDay(symbol: string, endDate: Date) {
+    const fallbackStartDate = new Date(endDate);
+    fallbackStartDate.setUTCDate(fallbackStartDate.getUTCDate() - 7);
+
+    const fallbackEndDate = new Date(endDate);
+    const fallbackHasCoverage = await this.repository.hasCoverage(
+      symbol,
+      fallbackStartDate,
+      fallbackEndDate,
+    );
+    const fallbackQuotes = fallbackHasCoverage
+      ? await this.repository.findHistoricalQuotes(symbol, fallbackStartDate, fallbackEndDate)
+      : await this.provider.getHistoricalQuotes(symbol, fallbackStartDate, fallbackEndDate);
+
+    if (!fallbackHasCoverage) {
+      await this.repository.saveHistoricalQuotes(
+        symbol,
+        fallbackStartDate,
+        fallbackEndDate,
+        fallbackQuotes,
+      );
+    }
+
+    return fallbackQuotes.length > 0 ? [fallbackQuotes[fallbackQuotes.length - 1]] : [];
+  }
+
+  private resolvePeriod(query: AssetHistoryQuery): { startDate: Date; endDate: Date } {
+    const hasCustomDates = Boolean(query.startDate || query.endDate);
+
+    if (query.range && hasCustomDates) {
+      throw new InvalidMarketQueryError('Use either range or startDate and endDate, not both.');
+    }
+
+    if (query.range) {
+      if (!PERIOD_PATTERN.test(query.range)) {
+        throw new InvalidMarketQueryError('range must be one of: 1D, 5D, 1M, 3M, 6M or 1Y.');
+      }
+
+      const endDate = this.today();
+      const startDate = new Date(endDate);
+
+      switch (query.range) {
+        case '1D':
+          break;
+        case '5D':
+          startDate.setUTCDate(startDate.getUTCDate() - 5);
+          break;
+        case '1M':
+          this.subtractCalendarPeriod(startDate, 1, 0);
+          break;
+        case '3M':
+          this.subtractCalendarPeriod(startDate, 3, 0);
+          break;
+        case '6M':
+          this.subtractCalendarPeriod(startDate, 6, 0);
+          break;
+        case '1Y':
+          this.subtractCalendarPeriod(startDate, 0, 1);
+          break;
+      }
+
+      return { startDate, endDate };
+    }
+
+    if (!query.startDate || !query.endDate) {
+      return this.resolvePeriod({ ...query, range: '1D' });
+    }
+
+    return {
+      startDate: this.parseDate(query.startDate, 'startDate'),
+      endDate: this.parseDate(query.endDate, 'endDate'),
+    };
+  }
+
+  private today(): Date {
+    const now = new Date();
+    return new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
+  }
+
+  private subtractCalendarPeriod(date: Date, months: number, years: number): void {
+    const day = date.getUTCDate();
+    date.setUTCDate(1);
+    date.setUTCMonth(date.getUTCMonth() - months);
+    date.setUTCFullYear(date.getUTCFullYear() - years);
+
+    const lastDayOfMonth = new Date(
+      Date.UTC(date.getUTCFullYear(), date.getUTCMonth() + 1, 0),
+    ).getUTCDate();
+    date.setUTCDate(Math.min(day, lastDayOfMonth));
   }
 
   private parseSymbols(value: string): string[] {

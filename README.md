@@ -37,15 +37,24 @@ Resposta esperada:
 
 ### `GET /assets/history`
 
-Consulta preços históricos de um ou mais ativos da B3.
+Consulta preços históricos de um ou mais ativos da B3. A consulta pode usar um período relativo ou datas específicas. Se nenhum período for informado, o backend utiliza `range=1D` por padrão.
 
 Parâmetros obrigatórios:
 
 - `symbols`: ativos separados por vírgula, como `PETR4` ou `PETR4,VALE3`.
-- `startDate`: data inicial no formato `YYYY-MM-DD`.
-- `endDate`: data final no formato `YYYY-MM-DD`.
+- `range`: período relativo a partir de hoje. Valores aceitos: `1D`, `5D`, `1M`, `3M`, `6M` e `1Y`.
+- `startDate`: data inicial no formato `YYYY-MM-DD`, usada junto com `endDate` para uma consulta personalizada.
+- `endDate`: data final no formato `YYYY-MM-DD`, usada junto com `startDate` para uma consulta personalizada.
 
-Exemplo:
+Use `range` ou o par `startDate` e `endDate`. Esses formatos não devem ser combinados.
+
+Exemplo de período relativo:
+
+```http
+GET {BASE_URL}/assets/history?symbols=PETR4,VALE3&range=1M
+```
+
+Exemplo de período personalizado:
 
 ```http
 GET {BASE_URL}/assets/history?symbols=PETR4,VALE3&startDate=2025-08-01&endDate=2025-08-31
@@ -69,7 +78,9 @@ Cada item representa um dia de negociação. Quando vários ativos são enviados
 
 Validações aplicadas pelo backend:
 
-- Os três parâmetros são obrigatórios.
+- `symbols` é obrigatório.
+- A consulta deve informar `range` ou os dois parâmetros `startDate` e `endDate`.
+- Os valores aceitos para `range` são `1D`, `5D`, `1M`, `3M`, `6M` e `1Y`.
 - As datas devem existir e seguir o formato `YYYY-MM-DD`.
 - `startDate` deve ser anterior ou igual a `endDate`.
 - O período máximo é de cinco anos.
@@ -81,6 +92,8 @@ Principais respostas:
 - `400 Bad Request`: parâmetros ausentes ou inválidos.
 - `404 Not Found`: ativo inexistente ou período sem dados.
 - `502 Bad Gateway`: erro no provider externo de cotações.
+
+Quando `range=1D` não possui cotação para a data atual, por exemplo em um fim de semana ou feriado, a API retorna o último pregão disponível dos sete dias anteriores.
 
 ### `POST /auth/register`
 
