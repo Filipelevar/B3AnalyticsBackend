@@ -42,7 +42,7 @@ export class MarketService {
   async getAssetHistory(query: AssetHistoryQuery): Promise<AssetHistoryResponse> {
     const symbols = this.parseSymbols(query.symbols);
     const { startDate, endDate } = this.resolvePeriod(query);
-    const isOneDayRange = !query.range || query.range === '1D';
+    const isOneDayRange = query.range === '1D' || (!query.range && !query.startDate && !query.endDate);
 
     if (startDate > endDate) {
       throw new InvalidMarketQueryError('startDate must be earlier than or equal to endDate.');
