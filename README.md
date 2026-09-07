@@ -197,3 +197,14 @@ Essa estratégia reduz chamadas desnecessárias ao provider externo e melhora o 
 ## Observação para execução local
 
 A aplicação publicada não exige nenhuma configuração para ser avaliada. As variáveis de ambiente, a conexão com PostgreSQL e a chave do JWT são responsabilidades do ambiente de produção.
+
+## Uso de Inteligência Artificial
+
+Utilizei apoio de IA (Claude) durante o desenvolvimento deste projeto para:
+
+- Revisão de escrita e organização dos READMEs (frontend e backend), buscando melhor entendimento da documentação;
+- Discussão e revisão da arquitetura do backend (organização de módulos, estratégia de cache, contratos de resposta da API);
+- Apoio pontual na escrita de trechos de código;
+- Debug de configuração de deploy na Vercel (variáveis de ambiente, CORS e conexão com o banco de dados no Neon).
+
+Todas as decisões técnicas, a lógica de negócio e a solução final foram definidas e implementadas por mim.
